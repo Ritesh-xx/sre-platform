@@ -1,0 +1,53 @@
+# ── Prometheus Configuration ───────────────────────────────────────────────────
+#
+# Prometheus works by PULLING metrics from targets (not pushing).
+# Every 'scrape_interval' seconds, Prometheus visits each target's /metrics
+# endpoint and stores the values in its time-series database.
+#
+# Why pull instead of push:
+# Pull means Prometheus controls when it collects data.
+# If a service goes down, Prometheus immediately knows (no data = problem).
+# With push, a dead service just stops pushing — ambiguous.
+
+global:
+  scrape_interval: 15s        # collect metrics every 15 seconds
+  evaluation_interval: 15s    # evaluate alert rules every 15 seconds
+  scrape_timeout: 10s         # if a target doesn't respond in 10s, mark it down
+
+# Tell Prometheus where Alertmanager is
+# When an alert rule fires, Prometheus sends it here
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+            # 'alertmanager' resolves to the alertmanager container
+            # because Docker Compose puts all containers on the same network
+            # and uses service names as DNS hostnames
+
+# Load alert rules from this file
+rule_files:
+  - '/etc/prometheus/alert-rules.yml'
+
+# ── What to scrape ─────────────────────────────────────────────────────────────
+scrape_configs:
+
+  # Prometheus scrapes itself — so you can monitor the monitoring system
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Your Flask app
+  - job_name: 'sre-app'
+    static_configs:
+      - targets: ['sre-app:5000']
+        # 'sre-app' is the Docker Compose service name
+        # Docker Compose creates a DNS entry for each service
+    metrics_path: '/metrics'   # which path to scrape
+    scrape_interval: 10s       # scrape app more frequently than default
+
+  # Your anomaly detector (so you can monitor the monitor)
+  - job_name: 'anomaly-detector'
+    static_configs:
+      - targets: ['anomaly-detector:8000']
+    metrics_path: '/metrics'

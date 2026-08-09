@@ -1,0 +1,70 @@
+# ── Prometheus Alert Rules ─────────────────────────────────────────────────────
+#
+# Alert rules define WHEN something is wrong.
+# Prometheus evaluates these every evaluation_interval (15s).
+# When a rule is true for 'for' duration, it fires to Alertmanager.
+#
+# The 'for' duration prevents alerting on brief spikes.
+# "for: 2m" means: this must be true for 2 continuous minutes before alerting.
+# Without 'for', a single slow request would fire an alert immediately.
+
+groups:
+  - name: sre-app-alerts
+    rules:
+
+      # ── SLO: Error rate must stay below 5% ──────────────────────────────────
+      # rate() calculates per-second rate of increase over the time window
+      # This expression: (errors per second) / (total requests per second)
+      # = fraction of requests that are errors = error rate
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(app_requests_total{status_code="500"}[5m])
+            /
+            rate(app_requests_total[5m])
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate has exceeded SLO threshold of 5%"
+          description: "Current error rate: {{ $value | humanizePercentage }}"
+
+      # ── SLO: P95 latency must stay below 1 second ───────────────────────────
+      # histogram_quantile(0.95, ...) = "what latency do 95% of requests complete within?"
+      # rate(..._bucket[5m]) = rate of increase of histogram buckets over 5 minutes
+      # Together: P95 latency over the last 5 minutes
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            rate(app_request_latency_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 latency has exceeded 1 second"
+          description: "Current P95 latency: {{ $value | humanizeDuration }}"
+
+      # ── App is completely down ───────────────────────────────────────────────
+      # up == 0 means Prometheus couldn't reach the target at all
+      - alert: AppDown
+        expr: up{job="sre-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SRE app is unreachable"
+          description: "Prometheus cannot scrape the app — it may be crashed"
+
+      # ── High active request count ────────────────────────────────────────────
+      # If too many requests are queued up, the app is overwhelmed
+      - alert: HighActiveRequests
+        expr: app_active_requests_current > 50
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of concurrent active requests"
+          description: "{{ $value }} requests currently active — possible overload"

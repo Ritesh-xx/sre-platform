@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+
+  sre-app:
+    build: ./app
+    ports:
+      - "5000:5000"
+    environment:
+      - INJECT_FAULT=false
+      - FAULT_TYPE=latency
+    networks:
+      - sre-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    networks:
+      - sre-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-datasource.yml:/etc/grafana/provisioning/datasources/ds.yml:ro
+      - ./monitoring/grafana-dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml:ro
+      - ./monitoring/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - sre-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - sre-network
+    restart: unless-stopped
+
+  anomaly-detector:
+    build: ./anomaly-detector
+    ports:
+      - "8001:8001"
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+      - TARGET_URL=http://sre-app:5000
+      - SCRAPE_INTERVAL=60
+      - HISTORY_MINUTES=30
+      - ANOMALY_THRESHOLD=3
+      - MAX_REPLICAS=5
+      - MIN_REPLICAS=2
+      - COOLDOWN_SECONDS=300
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - sre-network
+    depends_on:
+      - prometheus
+      - sre-app
+    restart: unless-stopped
+
+networks:
+  sre-network:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:

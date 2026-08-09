@@ -1,0 +1,95 @@
+name: CI Pipeline
+
+# When does this run?
+# On every push to main, and on every Pull Request
+# Why PRs too: catch issues before they merge, not after
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ── Job 1: Run Tests ──────────────────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    # ubuntu-latest: GitHub provides a fresh Ubuntu VM for each run
+    # It has Python, Node, Docker pre-installed
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        # Downloads your repo code into the runner VM
+        # Without this, the VM has no code to work with
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: |
+          pip install -r app/requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --cov=app --cov-report=term-missing
+        # -v: verbose output (show each test name)
+        # --cov: measure code coverage (what % of your code is tested)
+        # --cov-report: show which lines aren't covered
+
+  # ── Job 2: Build Docker Images ────────────────────────────────────────────
+  build:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    # needs: test means this job only runs if the test job passes
+    # If tests fail, we don't waste time building broken code
+
+    # Only push images on pushes to main, not on PRs
+    # We don't want every PR branch pushing to Docker Hub
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          # These come from GitHub repo secrets (Settings → Secrets)
+          # Never put actual credentials in code — always use secrets
+
+      - name: Build and push Flask app
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/sre-app:latest
+            ${{ secrets.DOCKER_USERNAME }}/sre-app:${{ github.sha }}
+          # Two tags:
+          # :latest — always points to the most recent build
+          # :sha — unique tag for this exact commit (never overwrites old images)
+          # Why both: 'latest' is easy to reference, sha is for audit trail
+
+      - name: Build and push Anomaly Detector
+        uses: docker/build-push-action@v5
+        with:
+          context: ./anomaly-detector
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/sre-anomaly-detector:latest
+            ${{ secrets.DOCKER_USERNAME }}/sre-anomaly-detector:${{ github.sha }}
+
+      - name: Post build summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- App image: ${{ secrets.DOCKER_USERNAME }}/sre-app:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Detector image: ${{ secrets.DOCKER_USERNAME }}/sre-anomaly-detector:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          # GITHUB_STEP_SUMMARY: appears in the Actions run summary page
+          # Useful for seeing what was built at a glance

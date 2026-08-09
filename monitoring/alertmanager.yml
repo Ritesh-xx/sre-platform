@@ -1,0 +1,45 @@
+# ── Alertmanager Configuration ─────────────────────────────────────────────────
+#
+# Alertmanager receives alerts FROM Prometheus and decides what to do:
+# - Send to Slack, PagerDuty, email, webhook
+# - Group related alerts together (don't get 50 alerts for one problem)
+# - Silence alerts during maintenance
+# - Route different severities to different channels
+#
+# For our project, we route alerts to a webhook — our anomaly detector
+# listens on that webhook and takes action. This is the integration point
+# between Alertmanager and your auto-remediation system.
+
+route:
+  # Default receiver — where all alerts go unless a specific route matches
+  receiver: 'anomaly-detector-webhook'
+
+  # Group alerts by alert name and severity
+  # If 3 alerts fire at once, group them into 1 notification
+  group_by: ['alertname', 'severity']
+
+  # Wait 30 seconds before sending — collects related alerts that fire together
+  group_wait: 30s
+
+  # If more alerts come in for the same group, wait 5 minutes before re-alerting
+  group_interval: 5m
+
+  # If the problem persists, resend every hour
+  repeat_interval: 1h
+
+  # Sub-routes: critical alerts also go to logs immediately
+  routes:
+    - match:
+        severity: critical
+      receiver: 'anomaly-detector-webhook'
+      # In a real setup you'd add PagerDuty or Slack here for critical alerts
+
+receivers:
+  - name: 'anomaly-detector-webhook'
+    webhook_configs:
+      - url: 'http://anomaly-detector:8001/webhook'
+        # Our anomaly detector listens on port 8001 for incoming alerts
+        # When Alertmanager fires, detector gets a POST request with alert details
+        send_resolved: true
+        # send_resolved: also notify when the alert stops firing
+        # Useful for: "high error rate is now resolved, you can stop the rollback"

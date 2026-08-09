@@ -1,0 +1,19 @@
+# ── Grafana Datasource Provisioning ───────────────────────────────────────────
+# Grafana needs to know WHERE to get data from.
+# Without this file, you'd have to manually add the Prometheus URL in the UI
+# every time you recreate the Grafana container.
+# Provisioning files make Grafana configuration repeatable and code-controlled.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    # 'proxy' means Grafana's backend fetches from Prometheus
+    # (not your browser directly — safer, avoids CORS issues)
+    url: http://prometheus:9090
+    # 'prometheus' resolves via Docker Compose's internal DNS
+    isDefault: true
+    editable: false
+    # editable: false means UI changes don't persist — config lives in this file

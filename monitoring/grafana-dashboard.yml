@@ -1,0 +1,15 @@
+# ── Grafana Dashboard Provisioning ────────────────────────────────────────────
+# Tells Grafana where to find dashboard JSON files to auto-load.
+
+apiVersion: 1
+
+providers:
+  - name: 'SRE Platform Dashboards'
+    orgId: 1
+    folder: 'SRE Platform'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      # Grafana watches this folder and loads any .json files it finds

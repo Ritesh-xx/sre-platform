@@ -1,0 +1,53 @@
+{
+  "name": "SRE Platform Dev Environment",
+
+  "image": "mcr.microsoft.com/devcontainers/python:3.11-bullseye",
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "dockerDashComposeVersion": "v2"
+    },
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "version": "latest",
+      "helm": "latest",
+      "minikube": "none"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "postCreateCommand": "pip install -r anomaly-detector/requirements.txt && pip install pytest pytest-cov requests",
+
+  "forwardPorts": [3000, 5000, 9090, 9093],
+
+  "portsAttributes": {
+    "3000": {
+      "label": "Grafana Dashboard",
+      "onAutoForward": "openBrowser"
+    },
+    "5000": {
+      "label": "Flask App",
+      "onAutoForward": "notify"
+    },
+    "9090": {
+      "label": "Prometheus",
+      "onAutoForward": "notify"
+    },
+    "9093": {
+      "label": "Alertmanager",
+      "onAutoForward": "silent"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylance",
+        "ms-azuretools.vscode-docker",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "eamodio.gitlens"
+      ]
+    }
+  }
+}
